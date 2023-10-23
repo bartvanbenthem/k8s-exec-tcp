@@ -61,8 +61,8 @@ async fn main() -> anyhow::Result<()> {
     //let command = format!("telnet {} {}", host, port);
     let command = format!(
         "if nc -zv {} {} 2>/dev/null; 
-                            then echo 'Telnet successful'; 
-                            else echo 'Telnet failed'; fi",
+                            then echo -n 'Telnet successful'; 
+                            else echo -n 'Telnet failed'; fi",
         host, port
     );
 
@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
         let output = get_output(attached).await;
-        println!("{output}");
+        println!("{output} on host: {} port: {}", host, port);
     }
 
     // Delete it

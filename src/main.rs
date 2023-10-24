@@ -3,7 +3,7 @@ use std::error::Error;
 use clap::{App, Arg};
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
-use tokio::sync::Semaphore;
+use std::sync::Arc;
 use tracing::*;
 
 use kube::{
@@ -72,7 +72,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let semaphore = Semaphore::new(config.max_connections);
+    // Initialize and configure a semaphore with the value of --max-connections
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_connections));
     // Collect JoinHandles in a vector
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
@@ -80,12 +81,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         for host in config.hosts.clone() {
             let name = name.to_string();
             let pods = pods.clone();
-
-            let _s = semaphore.acquire().await?;
+            let semaphore_clone = semaphore.clone();
+            
             let handle = tokio::spawn(async move {
+                let permit = semaphore_clone.acquire().await.unwrap();
                 if let Err(err) = check_remote_host(&host, &port, &name, pods).await {
                     eprintln!("Error for host {}: {:?}", host, err);
                 }
+                drop(permit);
             });
 
             handles.push(handle);

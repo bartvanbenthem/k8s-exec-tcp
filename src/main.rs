@@ -58,7 +58,6 @@ async fn main() -> anyhow::Result<()> {
     
     let host = "172.18.73.210";
     let port = 22;
-    //let command = format!("telnet {} {}", host, port);
     let command = format!(
         "if nc -zv {} {} 2>/dev/null; 
                             then echo -n 'Telnet successful'; 

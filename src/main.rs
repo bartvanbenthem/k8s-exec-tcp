@@ -3,6 +3,7 @@ use chrono::Utc;
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use tracing::*;
+use tokio::sync::Semaphore;
 
 use kube::{
     api::{
@@ -19,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     let image: &str = "alpine";
     let hosts: Vec<&str> = vec!["172.22.128.32", "172.22.128.33", "172.22.128.34", "172.22.128.32", "172.22.128.33", "172.22.128.34"];
     let port: i32 = 22;
-    //let max_connections: usize = 10;
+    let max_connections: usize = 10;
 
     ///////////////////////////////////////////////////////
 
@@ -68,13 +69,15 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    let semaphore = Semaphore::new(max_connections);
     // Collect JoinHandles in a vector
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
     for host in hosts {
-        let port = port;
+        let port = port.clone();
         let name = name.to_string();
         let pods = pods.clone();
+        let _s = semaphore.acquire().await?;
 
         let handle = tokio::spawn(async move {
             if let Err(err) = check_remote_host(host, &port, &name, pods).await {

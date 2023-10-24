@@ -3,8 +3,6 @@ use chrono::Utc;
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use tracing::*;
-use tokio::sync::{Semaphore, Mutex};
-use std::sync::Arc;
 
 use kube::{
     api::{
@@ -21,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     let image: &str = "alpine";
     let hosts: Vec<&str> = vec!["172.22.128.32", "172.22.128.33", "172.22.128.34", "172.22.128.32", "172.22.128.33", "172.22.128.34"];
     let port: i32 = 22;
-    let connections: usize = 10;
+    //let max_connections: usize = 10;
 
     ///////////////////////////////////////////////////////
 
@@ -70,7 +68,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    //let semaphore = Arc::new(Mutex::new(Semaphore::new(2)));
     // Collect JoinHandles in a vector
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
@@ -78,10 +75,8 @@ async fn main() -> anyhow::Result<()> {
         let port = port;
         let name = name.to_string();
         let pods = pods.clone();
-        //let semaphore = semaphore.clone();
 
         let handle = tokio::spawn(async move {
-            //let _permit = semaphore.lock().await.acquire().await.expect("Semaphore permit acquisition failed");
             if let Err(err) = check_remote_host(host, &port, &name, pods).await {
                 eprintln!("Error for host {}: {:?}", host, err);
             }

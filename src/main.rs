@@ -81,7 +81,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         for host in config.hosts.clone() {
             let name = name.to_string();
             let pods = pods.clone();
-            let semaphore = Arc::clone(&semaphore);
+            let semaphore = semaphore.clone();
 
             let handle = tokio::spawn(async move {
                 let permit = semaphore.acquire().await.unwrap();

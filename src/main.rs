@@ -1,5 +1,5 @@
-use anyhow::Ok;
 use chrono::Utc;
+use std::error::Error;
 use clap::{App, Arg};
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
@@ -24,7 +24,7 @@ struct Config {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     let config = get_args()?;
 
     tracing_subscriber::fmt::init();
@@ -123,7 +123,7 @@ async fn check_remote_host(
     port: &u32,
     name: &str,
     pods: Api<Pod>,
-) -> anyhow::Result<()> {
+) -> Result<(), Box<dyn Error>> {
     let command = format!(
         "if nc -zv {} {} 2>/dev/null; 
             then echo -n 'tcpcheck-successful'; 
@@ -144,7 +144,7 @@ async fn check_remote_host(
     Ok(())
 }
 
-fn get_args() -> anyhow::Result<Config> {
+fn get_args() -> Result<Config, Box<dyn Error>> {
     // Define and parse command-line arguments using clap
     let matches = App::new("k8s-exec-tcp")
         .arg(

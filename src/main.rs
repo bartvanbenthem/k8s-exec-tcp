@@ -81,10 +81,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         for host in config.hosts.clone() {
             let name = name.to_string();
             let pods = pods.clone();
-            let semaphore_clone = semaphore.clone();
+            let semaphore = Arc::clone(&semaphore);
 
             let handle = tokio::spawn(async move {
-                let permit = semaphore_clone.acquire().await.unwrap();
+                let permit = semaphore.acquire().await.unwrap();
                 if let Err(err) = check_remote_host(&host, &port, &name, pods).await {
                     eprintln!("Error for host {}: {:?}", host, err);
                 }

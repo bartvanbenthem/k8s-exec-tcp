@@ -1,7 +1,10 @@
+use anyhow::Ok;
 use chrono::Utc;
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use tracing::*;
+use tokio::sync::{Semaphore, Mutex};
+use std::sync::Arc;
 
 use kube::{
     api::{
@@ -14,16 +17,11 @@ use kube::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // INPUT PARAMS
-    let namespace = "test";
-    let image = "alpine";
-    let host = "172.22.128.32";
-    let port = 22;
-    let command = format!(
-        "if nc -zv {} {} 2>/dev/null; 
-            then echo -n 'tcpcheck-successful'; 
-            else echo -n 'tcpcheck-failed'; fi",
-        host, port
-    );
+    let namespace: &str = "test";
+    let image: &str = "alpine";
+    let hosts: Vec<&str> = vec!["172.22.128.32", "172.22.128.33", "172.22.128.34", "172.22.128.32", "172.22.128.33", "172.22.128.34"];
+    let port: i32 = 22;
+    let connections: usize = 10;
 
     ///////////////////////////////////////////////////////
 
@@ -72,16 +70,29 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    {
-        let attached = pods
-            .exec(
-                &name,
-                vec!["sh", "-c", &command],
-                &AttachParams::default().stderr(false).stderr(false),
-            )
-            .await?;
-        let output = get_output(attached).await;
-        println!("{output} on host: {} port: {}", host, port);
+    //let semaphore = Arc::new(Mutex::new(Semaphore::new(2)));
+    // Collect JoinHandles in a vector
+    let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
+
+    for host in hosts {
+        let port = port;
+        let name = name.to_string();
+        let pods = pods.clone();
+        //let semaphore = semaphore.clone();
+
+        let handle = tokio::spawn(async move {
+            //let _permit = semaphore.lock().await.acquire().await.expect("Semaphore permit acquisition failed");
+            if let Err(err) = check_remote_host(host, &port, &name, pods).await {
+                eprintln!("Error for host {}: {:?}", host, err);
+            }
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all the spawned tasks to complete
+    for handle in handles {
+        handle.await?;
     }
 
     // Delete it
@@ -103,4 +114,30 @@ async fn get_output(mut attached: AttachedProcess) -> String {
         .join("");
     attached.join().await.unwrap();
     out
+}
+
+async fn check_remote_host(
+    host: &str,
+    port: &i32,
+    name: &str,
+    pods: Api<Pod>,
+) -> anyhow::Result<()> {
+    let command = format!(
+        "if nc -zv {} {} 2>/dev/null; 
+            then echo -n 'tcpcheck-successful'; 
+            else echo -n 'tcpcheck-failed'; fi",
+        host, port
+    );
+
+    let attached = pods
+        .exec(
+            &name,
+            vec!["sh", "-c", &command],
+            &AttachParams::default().stderr(false).stderr(false),
+        )
+        .await?;
+    let output = get_output(attached).await;
+    println!("{output} on host: {} port: {}", host, port);
+
+    Ok(())
 }

@@ -1,8 +1,8 @@
 use chrono::Utc;
-use std::error::Error;
 use clap::{App, Arg};
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
+use std::error::Error;
 use std::sync::Arc;
 use tracing::*;
 
@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let name = name.to_string();
             let pods = pods.clone();
             let semaphore_clone = semaphore.clone();
-            
+
             let handle = tokio::spawn(async move {
                 let permit = semaphore_clone.acquire().await.unwrap();
                 if let Err(err) = check_remote_host(&host, &port, &name, pods).await {
@@ -128,9 +128,7 @@ async fn check_remote_host(
     pods: Api<Pod>,
 ) -> Result<(), Box<dyn Error>> {
     let command = format!(
-        "if nc -zv {} {} 2>/dev/null; 
-            then echo -n 'tcpcheck-successful'; 
-            else echo -n 'tcpcheck-failed'; fi",
+        "timeout 5 nc -zv -w 2 {} {} && echo -n 'tcpcheck-successful' || echo -n 'tcpcheck-failed'",
         host, port
     );
 

@@ -1,7 +1,7 @@
+use chrono::Utc;
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use tracing::*;
-use chrono::Utc;
 
 use kube::{
     api::{
@@ -13,6 +13,20 @@ use kube::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // INPUT PARAMS
+    let namespace = "test";
+    let image = "alpine";
+    let host = "172.22.128.32";
+    let port = 22;
+    let command = format!(
+        "if nc -zv {} {} 2>/dev/null; 
+            then echo -n 'tcpcheck-successful'; 
+            else echo -n 'tcpcheck-failed'; fi",
+        host, port
+    );
+
+    ///////////////////////////////////////////////////////
+
     tracing_subscriber::fmt::init();
     let client = Client::try_default().await?;
 
@@ -25,14 +39,14 @@ async fn main() -> anyhow::Result<()> {
             "restartPolicy": "Never",
             "containers": [{
                 "name": &name,
-                "image": "busybox",
+                "image": &image,
                 // Do nothing
                 "command": ["tail", "-f", "/dev/null"],
             }],
         }
     }))?;
 
-    let pods: Api<Pod> = Api::default_namespaced(client);
+    let pods: Api<Pod> = Api::namespaced(client, namespace);
 
     // Stop on error including a pod already exists or is still being deleted.
     pods.create(&PostParams::default(), &p).await?;
@@ -57,15 +71,6 @@ async fn main() -> anyhow::Result<()> {
             _ => {}
         }
     }
-    
-    let host = "172.22.128.32";
-    let port = 22;
-    let command = format!(
-        "if nc -zv {} {} 2>/dev/null; 
-                            then echo -n 'tcpcheck-successful'; 
-                            else echo -n 'tcpcheck-failed'; fi",
-        host, port
-    );
 
     {
         let attached = pods

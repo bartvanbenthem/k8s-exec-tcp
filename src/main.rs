@@ -80,8 +80,8 @@ async fn main() -> anyhow::Result<()> {
         for host in config.hosts.clone() {
             let name = name.to_string();
             let pods = pods.clone();
-            let _s = semaphore.acquire().await?;
 
+            let _s = semaphore.acquire().await?;
             let handle = tokio::spawn(async move {
                 if let Err(err) = check_remote_host(&host, &port, &name, pods).await {
                     eprintln!("Error for host {}: {:?}", host, err);

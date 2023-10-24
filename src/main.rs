@@ -1,6 +1,7 @@
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use tracing::*;
+use chrono::Utc;
 
 use kube::{
     api::{
@@ -15,14 +16,15 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let client = Client::try_default().await?;
 
+    let name = format!("tcp-check-{}", Utc::now().timestamp());
     let p: Pod = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
         "kind": "Pod",
-        "metadata": { "name": "example" },
+        "metadata": { "name": &name },
         "spec": {
             "restartPolicy": "Never",
             "containers": [{
-                "name": "example",
+                "name": &name,
                 "image": "busybox",
                 // Do nothing
                 "command": ["tail", "-f", "/dev/null"],
@@ -37,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Wait until the pod is running, otherwise we get 500 error.
     let wp = WatchParams::default()
-        .fields("metadata.name=example")
+        .fields(format!("metadata.name={}", name).as_str())
         .timeout(10);
     let mut stream = pods.watch(&wp, "0").await?.boxed();
     while let Some(status) = stream.try_next().await? {
@@ -56,19 +58,19 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     
-    let host = "172.18.73.210";
+    let host = "172.22.128.32";
     let port = 22;
     let command = format!(
         "if nc -zv {} {} 2>/dev/null; 
-                            then echo -n 'Telnet successful'; 
-                            else echo -n 'Telnet failed'; fi",
+                            then echo -n 'tcpcheck-successful'; 
+                            else echo -n 'tcpcheck-failed'; fi",
         host, port
     );
 
     {
         let attached = pods
             .exec(
-                "example",
+                &name,
                 vec!["sh", "-c", &command],
                 &AttachParams::default().stderr(false).stderr(false),
             )
@@ -78,10 +80,10 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Delete it
-    pods.delete("example", &DeleteParams::default())
+    pods.delete(&name, &DeleteParams::default())
         .await?
         .map_left(|pdel| {
-            assert_eq!(pdel.name_any(), "example");
+            assert_eq!(pdel.name_any(), name);
         });
 
     Ok(())

@@ -1,9 +1,10 @@
 use anyhow::Ok;
 use chrono::Utc;
+use clap::{App, Arg};
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
-use tracing::*;
 use tokio::sync::Semaphore;
+use tracing::*;
 
 use kube::{
     api::{
@@ -13,16 +14,18 @@ use kube::{
     Client,
 };
 
+#[derive(Debug)]
+struct Config {
+    namespace: String,
+    image: String,
+    hosts: Vec<String>,
+    ports: Vec<u32>,
+    max_connections: usize,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // INPUT PARAMS
-    let namespace: &str = "test";
-    let image: &str = "alpine";
-    let hosts: Vec<&str> = vec!["172.22.128.32", "172.22.128.33", "172.22.128.34", "172.22.128.32", "172.22.128.33", "172.22.128.34"];
-    let port: i32 = 22;
-    let max_connections: usize = 10;
-
-    ///////////////////////////////////////////////////////
+    let config = get_args()?;
 
     tracing_subscriber::fmt::init();
     let client = Client::try_default().await?;
@@ -36,14 +39,14 @@ async fn main() -> anyhow::Result<()> {
             "restartPolicy": "Never",
             "containers": [{
                 "name": &name,
-                "image": &image,
+                "image": &config.image,
                 // Do nothing
                 "command": ["tail", "-f", "/dev/null"],
             }],
         }
     }))?;
 
-    let pods: Api<Pod> = Api::namespaced(client, namespace);
+    let pods: Api<Pod> = Api::namespaced(client, &config.namespace);
 
     // Stop on error including a pod already exists or is still being deleted.
     pods.create(&PostParams::default(), &p).await?;
@@ -69,23 +72,24 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let semaphore = Semaphore::new(max_connections);
+    let semaphore = Semaphore::new(config.max_connections);
     // Collect JoinHandles in a vector
     let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
-    for host in hosts {
-        let port = port.clone();
-        let name = name.to_string();
-        let pods = pods.clone();
-        let _s = semaphore.acquire().await?;
+    for port in config.ports {
+        for host in config.hosts.clone() {
+            let name = name.to_string();
+            let pods = pods.clone();
+            let _s = semaphore.acquire().await?;
 
-        let handle = tokio::spawn(async move {
-            if let Err(err) = check_remote_host(host, &port, &name, pods).await {
-                eprintln!("Error for host {}: {:?}", host, err);
-            }
-        });
+            let handle = tokio::spawn(async move {
+                if let Err(err) = check_remote_host(&host, &port, &name, pods).await {
+                    eprintln!("Error for host {}: {:?}", host, err);
+                }
+            });
 
-        handles.push(handle);
+            handles.push(handle);
+        }
     }
 
     // Wait for all the spawned tasks to complete
@@ -116,7 +120,7 @@ async fn get_output(mut attached: AttachedProcess) -> String {
 
 async fn check_remote_host(
     host: &str,
-    port: &i32,
+    port: &u32,
     name: &str,
     pods: Api<Pod>,
 ) -> anyhow::Result<()> {
@@ -138,4 +142,81 @@ async fn check_remote_host(
     println!("{output} on host: {} port: {}", host, port);
 
     Ok(())
+}
+
+fn get_args() -> anyhow::Result<Config> {
+    // Define and parse command-line arguments using clap
+    let matches = App::new("k8s-exec-tcp")
+        .arg(
+            Arg::with_name("namespace")
+                .short("n")
+                .long("namespace")
+                .required(false)
+                .takes_value(true)
+                .help("Kubernetes Namespace"),
+        )
+        .arg(
+            Arg::with_name("image")
+                .short("i")
+                .long("image")
+                .required(false)
+                .takes_value(true)
+                .help("Override alpine container image"),
+        )
+        .arg(
+            Arg::with_name("hosts")
+                .short("h")
+                .long("hosts")
+                .required(false)
+                .takes_value(true)
+                .multiple(true)
+                .help("Space separated list of hosts"),
+        )
+        .arg(
+            Arg::with_name("ports")
+                .short("p")
+                .long("ports")
+                .required(true)
+                .takes_value(true)
+                .multiple(true)
+                .help("Port that remote host listens on"),
+        )
+        .arg(
+            Arg::with_name("connections")
+                .short("c")
+                .long("max-connections")
+                .required(false)
+                .takes_value(true)
+                .help("Port that remote host listens on"),
+        )
+        .get_matches();
+
+    let mut param_hosts: Vec<String> = vec![];
+    if let Some(values) = matches.values_of("hosts") {
+        for value in values {
+            param_hosts.push(value.to_string());
+        }
+    }
+
+    let mut param_ports: Vec<u32> = vec![];
+    if let Some(values) = matches.values_of("ports") {
+        for value in values {
+            param_ports.push(value.parse::<u32>().unwrap_or(8080));
+        }
+    }
+
+    Ok(Config {
+        hosts: param_hosts,
+        ports: param_ports,
+        namespace: matches
+            .value_of("namespace")
+            .unwrap_or("default")
+            .to_string(),
+        image: matches.value_of("image").unwrap_or("alpine").to_string(),
+        max_connections: matches
+            .value_of("connections")
+            .unwrap_or("10")
+            .parse::<usize>()
+            .unwrap_or(10),
+    })
 }

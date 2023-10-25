@@ -23,8 +23,121 @@ pub struct Config {
     max_connections: usize,
 }
 
-pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
+impl Config {
+    pub fn build() -> Result<Config, Box<dyn Error>> {
+        // Define and parse command-line arguments using clap
+        let matches = App::new("k8s-exec-tcp")
+            .arg(
+                Arg::with_name("namespace")
+                    .short("n")
+                    .long("namespace")
+                    .required(false)
+                    .takes_value(true)
+                    .help("Kubernetes Namespace"),
+            )
+            .arg(
+                Arg::with_name("image")
+                    .short("i")
+                    .long("image")
+                    .required(false)
+                    .takes_value(true)
+                    .help("Override alpine container image"),
+            )
+            .arg(
+                Arg::with_name("hosts")
+                    .short("h")
+                    .long("hosts")
+                    .required(false)
+                    .takes_value(true)
+                    .multiple(true)
+                    .help("Space separated list of hosts"),
+            )
+            .arg(
+                Arg::with_name("ports")
+                    .short("p")
+                    .long("ports")
+                    .required(true)
+                    .takes_value(true)
+                    .multiple(true)
+                    .help("Port that remote host listens on"),
+            )
+            .arg(
+                Arg::with_name("connections")
+                    .short("c")
+                    .long("max-connections")
+                    .required(false)
+                    .takes_value(true)
+                    .help("Port that remote host listens on"),
+            )
+            .get_matches();
 
+        let mut param_hosts: Vec<String> = vec![];
+        if let Some(values) = matches.values_of("hosts") {
+            for value in values {
+                param_hosts.push(value.to_string());
+            }
+        }
+
+        let mut param_ports: Vec<u32> = vec![];
+        if let Some(values) = matches.values_of("ports") {
+            for value in values {
+                param_ports.push(value.parse::<u32>().unwrap_or(8080));
+            }
+        }
+
+        Ok(Config {
+            hosts: param_hosts,
+            ports: param_ports,
+            namespace: matches
+                .value_of("namespace")
+                .unwrap_or("default")
+                .to_string(),
+            image: matches.value_of("image").unwrap_or("alpine").to_string(),
+            max_connections: matches
+                .value_of("connections")
+                .unwrap_or("10")
+                .parse::<usize>()
+                .unwrap_or(10),
+        })
+    }
+}
+
+pub async fn get_output(mut attached: AttachedProcess) -> String {
+    let stdout = tokio_util::io::ReaderStream::new(attached.stdout().unwrap());
+    let out = stdout
+        .filter_map(|r| async { r.ok().and_then(|v| String::from_utf8(v.to_vec()).ok()) })
+        .collect::<Vec<_>>()
+        .await
+        .join("");
+    attached.join().await.unwrap();
+    out
+}
+
+pub async fn check_remote_host(
+    host: &str,
+    port: &u32,
+    name: &str,
+    pods: Api<Pod>,
+) -> Result<(), Box<dyn Error>> {
+    let command = format!(
+        "timeout 5 nc -zv -w 2 {} {} && echo -n 'tcpcheck-successful' || echo -n 'tcpcheck-failed'",
+        host, port
+    );
+
+    let attached = pods
+        .exec(
+            &name,
+            vec!["sh", "-c", &command],
+            &AttachParams::default().stderr(false).stderr(false),
+        )
+        .await?;
+    let output = get_output(attached).await;
+    println!("{output} on host: {} port: {}", host, port);
+
+    Ok(())
+}
+
+pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
     let client = Client::try_default().await?;
 
@@ -106,116 +219,4 @@ pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
         });
 
     Ok(())
-}
-
-pub async fn get_output(mut attached: AttachedProcess) -> String {
-    let stdout = tokio_util::io::ReaderStream::new(attached.stdout().unwrap());
-    let out = stdout
-        .filter_map(|r| async { r.ok().and_then(|v| String::from_utf8(v.to_vec()).ok()) })
-        .collect::<Vec<_>>()
-        .await
-        .join("");
-    attached.join().await.unwrap();
-    out
-}
-
-pub async fn check_remote_host(
-    host: &str,
-    port: &u32,
-    name: &str,
-    pods: Api<Pod>,
-) -> Result<(), Box<dyn Error>> {
-    let command = format!(
-        "timeout 5 nc -zv -w 2 {} {} && echo -n 'tcpcheck-successful' || echo -n 'tcpcheck-failed'",
-        host, port
-    );
-
-    let attached = pods
-        .exec(
-            &name,
-            vec!["sh", "-c", &command],
-            &AttachParams::default().stderr(false).stderr(false),
-        )
-        .await?;
-    let output = get_output(attached).await;
-    println!("{output} on host: {} port: {}", host, port);
-
-    Ok(())
-}
-
-pub fn get_args() -> Result<Config, Box<dyn Error>> {
-    // Define and parse command-line arguments using clap
-    let matches = App::new("k8s-exec-tcp")
-        .arg(
-            Arg::with_name("namespace")
-                .short("n")
-                .long("namespace")
-                .required(false)
-                .takes_value(true)
-                .help("Kubernetes Namespace"),
-        )
-        .arg(
-            Arg::with_name("image")
-                .short("i")
-                .long("image")
-                .required(false)
-                .takes_value(true)
-                .help("Override alpine container image"),
-        )
-        .arg(
-            Arg::with_name("hosts")
-                .short("h")
-                .long("hosts")
-                .required(false)
-                .takes_value(true)
-                .multiple(true)
-                .help("Space separated list of hosts"),
-        )
-        .arg(
-            Arg::with_name("ports")
-                .short("p")
-                .long("ports")
-                .required(true)
-                .takes_value(true)
-                .multiple(true)
-                .help("Port that remote host listens on"),
-        )
-        .arg(
-            Arg::with_name("connections")
-                .short("c")
-                .long("max-connections")
-                .required(false)
-                .takes_value(true)
-                .help("Port that remote host listens on"),
-        )
-        .get_matches();
-
-    let mut param_hosts: Vec<String> = vec![];
-    if let Some(values) = matches.values_of("hosts") {
-        for value in values {
-            param_hosts.push(value.to_string());
-        }
-    }
-
-    let mut param_ports: Vec<u32> = vec![];
-    if let Some(values) = matches.values_of("ports") {
-        for value in values {
-            param_ports.push(value.parse::<u32>().unwrap_or(8080));
-        }
-    }
-
-    Ok(Config {
-        hosts: param_hosts,
-        ports: param_ports,
-        namespace: matches
-            .value_of("namespace")
-            .unwrap_or("default")
-            .to_string(),
-        image: matches.value_of("image").unwrap_or("alpine").to_string(),
-        max_connections: matches
-            .value_of("connections")
-            .unwrap_or("10")
-            .parse::<usize>()
-            .unwrap_or(10),
-    })
 }

@@ -1,10 +1,10 @@
 use std::process;
 
+use k8stcp::Config;
 
 #[tokio::main]
 async fn main() {
-
-    let config: k8stcp::Config = k8stcp::get_args().unwrap_or_else(|err| {
+    let config: Config = Config::build().unwrap_or_else(|err| {
         eprintln!("Problem parsing arguments: {err}");
         process::exit(1);
     });

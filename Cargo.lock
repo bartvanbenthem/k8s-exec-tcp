@@ -701,7 +701,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "k8s-pod-exec-tcp-check"
+name = "k8stcp"
 version = "0.1.0"
 dependencies = [
  "chrono",

@@ -153,6 +153,9 @@ pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
                 "image": &config.image,
                 // Do nothing
                 "command": ["tail", "-f", "/dev/null"],
+                "securityContext": {
+                    "runAsUser": 1000
+                  }
             }],
         }
     }))?;

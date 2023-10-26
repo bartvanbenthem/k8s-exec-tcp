@@ -1,6 +1,11 @@
-cargo build --release
+#sudo apt update
+#sudo apt install musl-tools
 
-./target/release/k8stcp --ports 22 443 8080 80 \
+#cargo build --release
+export CC=musl-gcc
+cargo build --target x86_64-unknown-linux-musl --release
+
+./target/x86_64-unknown-linux-musl/release/k8stcp --ports 22 443 8080 80 \
     --image alpine \
     --hosts 192.168.63.64 172.28.131.13 172.28.131.144 172.28.131.13 192.168.63.65 \
     --max-connections 20 \

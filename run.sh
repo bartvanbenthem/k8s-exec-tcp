@@ -1,6 +1,13 @@
 #sudo apt update
 #sudo apt install musl-tools
 
+#cargo check
+cargo fmt
+cargo test
+#cargo tarpaulin --ignore-tests
+#cargo clippy
+#cargo audit
+
 #cargo build --release
 export CC=musl-gcc
 cargo build --target x86_64-unknown-linux-musl --release

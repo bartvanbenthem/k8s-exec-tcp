@@ -1,5 +1,5 @@
 # k8s-exec-tcp
-Command-line interface (CLI) client designed to perform TCP checks from an authenticated Kubernetes cluster. These checks are carried out by temporarily initializing a pod within the specified namespace. This pod allows for the concurrent execution of checks on multiple remote targets. Targets are a combination of hosts and ports.
+Command-line interface (CLI) client designed to perform TCP checks concurrently from an authenticated Kubernetes cluster. These checks are carried out by temporarily initializing a pod within the specified namespace. This pod allows for the concurrent execution of checks on multiple remote targets. Targets are a combination of hosts and ports.
 
 ## usage
 ```bash

@@ -16,4 +16,5 @@ cargo build --target x86_64-unknown-linux-musl --release
     --image alpine \
     --hosts 192.168.63.64 172.28.131.13 172.28.131.144 172.28.131.13 192.168.63.65 \
     --max-connections 20 \
+    --service-account default \
     --namespace test

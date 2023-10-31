@@ -21,6 +21,7 @@ pub struct Config {
     hosts: Vec<String>,
     ports: Vec<u32>,
     max_connections: usize,
+    service_account: String,
 }
 
 impl Config {
@@ -69,6 +70,14 @@ impl Config {
                     .takes_value(true)
                     .help("Port that remote host listens on"),
             )
+            .arg(
+                Arg::with_name("account")
+                    .short("a")
+                    .long("service-account")
+                    .required(false)
+                    .takes_value(true)
+                    .help("Kubernetes service account name"),
+            )
             .get_matches();
 
         let mut param_hosts: Vec<String> = vec![];
@@ -98,6 +107,7 @@ impl Config {
                 .unwrap_or("10")
                 .parse::<usize>()
                 .unwrap_or(10),
+            service_account: matches.value_of("account").unwrap_or("default").to_string(),
         })
     }
 }
@@ -148,6 +158,7 @@ pub async fn run(config: Config) -> Result<(), Box<dyn Error>> {
         "metadata": { "name": &name },
         "spec": {
             "restartPolicy": "Never",
+            "serviceAccountName": &config.service_account,
             "containers": [{
                 "name": &name,
                 "image": &config.image,

@@ -1,5 +1,5 @@
 # k8s-exec-tcp
-Command-line interface (CLI) client designed to perform TCP checks concurrently from an authenticated Kubernetes cluster. These checks are carried out by temporarily initializing a pod within the specified namespace. This pod allows for the concurrent execution of checks on multiple remote targets. Targets are a combination of hosts and ports.
+This test project aims to evaluate the effectiveness of Rust for developing command-line interface (CLI) tools for Kubernetes. The primary focus is a CLI client designed to perform concurrent TCP checks from within an authenticated Kubernetes cluster.
 
 ## usage
 ```bash
